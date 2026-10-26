@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Pitou Lock",
+    "slug": "pitou-lock",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#07111f"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pitou.lock"
+    },
+    "android": {
+      "package": "com.pitou.lock",
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "អនុញ្ញាតឲ្យ Pitou Lock ប្រើ Face ID ដើម្បីរក្សាទុកការកំណត់សុវត្ថិភាព។"
+        }
+      ]
+    ]
+  }
+}
