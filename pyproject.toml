@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "teta"
+version = "1.0.0"
+description = "Termux CLI: encrypted Gmail account vault, candidate-name generator, offline 2FA TOTP"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Teta" }]
+keywords = ["termux", "gmail", "totp", "2fa", "cli", "vault"]
+dependencies = []
+
+[project.scripts]
+teta = "teta.cli:main"
+
+[tool.setuptools]
+packages = ["teta"]
