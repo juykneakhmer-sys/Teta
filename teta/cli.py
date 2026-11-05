@@ -315,6 +315,11 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_menu(args: argparse.Namespace) -> int:
+    from .menu import menu as open_menu
+    return open_menu(getattr(args, "home", None))
+
+
 # ---------------- parser ----------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -330,6 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
                "  teta code sokha.chan@gmail.com --watch\n",
     )
     p.add_argument("--version", action="version", version=f"teta {__version__}")
+    p.add_argument("--menu", action="store_true", help="បើក menu អន្តរកម្ម")
     p.add_argument("--home", dest="home", default=None,
                    help="ថតសម្រាប់ vault (default: ~/.teta)")
     sub = p.add_subparsers(dest="command", metavar="<command>")
@@ -391,6 +397,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("info", help="បង្ហាញព័ត៌មានកម្មវិធី").set_defaults(func=cmd_info)
 
+    mn = sub.add_parser("menu", help="menu អន្តរកម្ម (ងាយប្រើ)")
+    mn.set_defaults(func=cmd_menu)
+
     se = sub.add_parser("search", help="ស្វែងរកគណនី")
     se.add_argument("query")
     se.set_defaults(func=cmd_search)
@@ -401,7 +410,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "menu", False):
+        return cmd_menu(args)
     if not getattr(args, "command", None):
+        interactive = sys.stdin.isatty() and os.environ.get("TETA_NO_MENU") is None
+        if interactive or os.environ.get("TETA_FORCE_MENU"):
+            return cmd_menu(args)
         parser.print_help()
         return 0
     try:
