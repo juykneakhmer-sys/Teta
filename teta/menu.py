@@ -20,6 +20,7 @@ from . import __version__
 from .crypto import CryptoError
 from .generator import RESERVED_DOMAINS as DOMAINS, generate as generate_names, is_valid_email as valid_email
 from .store import Account, StoreError, Vault
+from . import recovery
 from .totp import code_at, normalize_secret, remaining_seconds
 from .cli import BOLD, CYAN, DIM, GREEN, RED, YELLOW, _pad as pad, c
 
@@ -158,6 +159,7 @@ def main_menu(session: Session) -> None:
     print("  " + c("[4]", CYAN) + " កូដ 2FA ចល័ត       " + c("[9]", CYAN) + " backup vault")
     print("  " + c("[5]", CYAN) + " ព័ត៌មានគណនី        " + c("[10]", CYAN) + " ប្តូរលេខសម្ងាត់មេ")
     print("  " + c("[11]", CYAN) + " ដំឡើង `teta`        " + c("[d]", CYAN) + " doctor   " + c("[?]", CYAN) + " ជំនួយ")
+    print("  " + c("[12]", CYAN) + " ស្តារគណនីដែលបាត់       " + c("[13]", CYAN) + " ស្ថានភាពស្តារ")
     print("  " + c("[0]", CYAN) + " ចាកចេញ")
     print(c("  " + "─" * 52, DIM))
 
@@ -334,6 +336,42 @@ def act_gen(_: Session) -> None:
     note("ទាំងនេះជាឈ្មោះ 'បេក្ខជន' — ផ្ទៀងផ្ទាត់ថាទំនេរនៅ accounts.google.com/signup ដោយខ្លួនឯង")
 
 
+def act_recover(session: Session) -> None:
+    """ជំនួយការស្តារគណនី — បង្កើតផែនការតាមផ្លូវការរបស់ Google។"""
+    print(c("  ស្តារគណនី Gmail ដែលបាត់ — តាមផ្លូវការ Google  ", BOLD))
+    note("Teta មិនចាប់យកសារពីអ៊ីមែលដែលអ្នកមិនមានសិទ្ធិចូលបានទេ — វាមិនអាចធ្វើបាន")
+    if session.accounts:
+        acc = pick_account(session, "គណនីដែលត្រូវស្តារ")
+        if not acc:
+            return
+    else:
+        email = ask("អ៊ីមែលដែលបាត់ (ឧ. poeungpitou18@gmail.com)").lower()
+        if not valid_email(email):
+            error("អ៊ីមែលមិនត្រឹមត្រូវ")
+            return
+        acc = Account(email=email, note=ask("recovery email/លេខទូរស័ព្ទ hint (ស្រេចចិត្ត)"))
+    print()
+    print(recovery.recovery_guide(acc))
+    print()
+    if ask("រក្សាទុកជាឯកសារ? (y/N)").lower().startswith("y"):
+        target = recovery.save_guide(acc, session.vault.base / "recovery")
+        success(f"រក្សាទុក → {target}")
+
+
+def act_recover_status(session: Session) -> None:
+    if not session.unlock():
+        return
+    if not session.accounts:
+        note("(ទំនេរ)")
+        return
+    print("  " + c(pad("EMAIL", 32) + pad("រៀបចំរួច", 12) + "ស្ថានភាព", BOLD))
+    for acc in session.accounts:
+        info = recovery.status(acc)
+        progress = f"{info['ready_items']}/{info['total_items']}"
+        flag = "✔ រួចរាល់" if info["ready_items"] >= 3 else "• ត្រូវបំពេញ"
+        print("  " + pad(acc.email, 32) + pad(progress, 12) + flag)
+
+
 def act_search(session: Session) -> None:
     if not session.unlock():
         return
@@ -445,6 +483,8 @@ ACTIONS = {
     "9": act_backup, "b": act_backup,
     "10": act_passwd, "p": act_passwd,
     "11": act_install, "t": act_install,
+    "12": act_recover, "u": act_recover,
+    "13": act_recover_status, "y": act_recover_status,
     "d": act_doctor,
     "?": act_help, "h": act_help,
 }

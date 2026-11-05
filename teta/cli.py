@@ -14,6 +14,7 @@ from pathlib import Path
 from . import __version__
 from .generator import RESERVED_DOMAINS, generate, is_valid_email, normalize_localpart
 from .store import Account, StoreError, Vault
+from . import recovery
 from .crypto import CryptoError
 from . import totp
 
@@ -320,6 +321,52 @@ def cmd_menu(args: argparse.Namespace) -> int:
     return open_menu(getattr(args, "home", None))
 
 
+def cmd_recover(args: argparse.Namespace) -> int:
+    """ផែនការស្តារគណនី Gmail តាមផ្លូវការរបស់ Google។"""
+    if not recovery.is_valid_email(args.email):
+        die("អ៊ីមែលមិនត្រឹមត្រូវ (ឧ. poeungpitou18@gmail.com)")
+    account = Account(email=args.email.strip().lower(), label=args.label or "",
+                      tags=[t.strip() for t in (args.tags or "").split(",") if t.strip()],
+                      note=args.hint or "")
+    vault = Vault(args.home)
+    if vault.exists() and not args.offline:
+        try:
+            vault.unlock(read_password("លេខសម្ងាត់មេ: "))
+            stored = vault.find(account.email)
+        except StoreError:
+            stored = None
+        if stored:
+            account = stored
+            print(c(f"✔ ប្រើព័ត៌មានដែលរក្សាទុកក្នុង vault ({account.email})", GREEN))
+
+    text = recovery.recovery_guide(account)
+    if args.json:
+        print(json.dumps(recovery.status(account), ensure_ascii=False, indent=2))
+        return 0
+    print(text)
+    if args.save:
+        target = recovery.save_guide(account, args.out or (Path(args.home or Path.home() / ".teta") / "recovery"))
+        print()
+        print(c(f"✔ រក្សាទុកផែនការ → {target}", GREEN))
+        print(c("ឯកសារនេះមានព័ត៌មានឯកជន — កុំផ្ញើទៅអ្នកដទៃ។", DIM))
+    return 0
+
+
+def cmd_recover_list(args: argparse.Namespace) -> int:
+    vault = open_vault(args)
+    if not vault.accounts:
+        print(c("(ទំនេរ)", DIM))
+        return 0
+    print(c(_pad("EMAIL", 34) + _pad("រៀបចំរួច", 12) + "ស្ថានភាព", BOLD))
+    for acc in vault.accounts:
+        info = recovery.status(acc)
+        progress = f"{info['ready_items']}/{info['total_items']}"
+        flag = "✔ រួចរាល់" if info["ready_items"] >= 3 else "• ត្រូវបំពេញ"
+        print(_pad(acc.email, 34) + _pad(progress, 12) + flag)
+    print(c("\nមើលផែនការលម្អិត: teta recover EMAIL --save", DIM))
+    return 0
+
+
 # ---------------- parser ----------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -396,6 +443,20 @@ def build_parser() -> argparse.ArgumentParser:
     rs.set_defaults(func=cmd_restore)
 
     sub.add_parser("info", help="បង្ហាញព័ត៌មានកម្មវិធី").set_defaults(func=cmd_info)
+
+    rc = sub.add_parser("recover", help="ផែនការស្តារគណនី Gmail (ផ្លូវការ)")
+    rc.add_argument("email")
+    rc.add_argument("--hint", default="", help="recovery email/phone hint (នឹងត្រូវបានបិទបាំង)")
+    rc.add_argument("--label", default="")
+    rc.add_argument("--tags", default="")
+    rc.add_argument("--save", action="store_true", help="រក្សាទុកជាឯកសារ")
+    rc.add_argument("--out", default="", help="ថតសម្រាប់ --save")
+    rc.add_argument("--offline", action="store_true", help="មិនបើក vault")
+    rc.add_argument("--json", action="store_true")
+    rc.set_defaults(func=cmd_recover)
+
+    rl = sub.add_parser("recover-list", help="ស្ថានភាពរៀបចំសម្រាប់ការស្តារ (គ្រប់គណនី)")
+    rl.set_defaults(func=cmd_recover_list)
 
     mn = sub.add_parser("menu", help="menu អន្តរកម្ម (ងាយប្រើ)")
     mn.set_defaults(func=cmd_menu)
