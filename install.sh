@@ -48,3 +48,4 @@ chmod 755 "$BIN_DIR/teta"
 
 echo "✔ ដំឡើងរួចរាល់ — សាកល្បង: teta --version"
 echo "  ជំហានបន្ទាប់: teta init"
+echo "  ជម្រើស: pkg install termux-api  (សម្រាប់ \`teta copy\` → clipboard)"

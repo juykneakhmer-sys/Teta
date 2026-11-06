@@ -60,8 +60,18 @@ class CliTest(unittest.TestCase):
 
     def test_invalid_email(self):
         self.run_cli("init")
-        code, _, err = self.run_cli("add", "not-an-email")
+        code, _, err = self.run_cli("add", "not-an-email", "--kind", "gmail")
         self.assertEqual(code, 1)
+
+    def test_username_account_without_email(self):
+        self.run_cli("init")
+        code, _, _ = self.run_cli("add", "123456789", "--kind", "moonton",
+                                  "--zone", "2001")
+        self.assertEqual(code, 0)
+        code, out, _ = self.run_cli("list", "--json")
+        data = json.loads(out)
+        self.assertEqual(data[0]["kind"], "moonton")
+        self.assertEqual(data[0]["server"], "2001")
 
     def test_gen_json(self):
         code, out, _ = self.run_cli("gen", "-n", "5", "--json")
