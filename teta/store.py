@@ -15,8 +15,10 @@ from . import crypto
 
 DEFAULT_DIR = Path(os.environ.get("TETA_HOME", Path.home() / ".teta"))
 VAULT_NAME = "vault.json"
-SALT_NAME = "vault.salt"          # សម្រាប់ផ្ទៀងផ្ទាត់លេខសម្ងាត់ពេលបើក
-ITER_NAME = "vault.check"
+SCHEMA = 2                        # v2 = គណនីហ្គេម/គេហទំព័រ + password + server
+
+# ប្រភេទគណនីដែលគាំទ្រ
+KINDS = ("gmail", "moonton", "game", "social", "email", "other")
 
 
 class StoreError(Exception):
@@ -25,11 +27,16 @@ class StoreError(Exception):
 
 @dataclass
 class Account:
-    email: str
+    email: str = ""                # អ៊ីមែល ឬទំនេរបើគណនីប្រើ login name
     label: str = ""
     tags: list[str] = field(default_factory=list)
     totp_secret: str = ""          # 2FA secret (base32) — offline TOTP
-    note: str = ""                 # ចំណាំឯកជន (ដូចជា recovery email hint)
+    note: str = ""                 # ចំណាំឯកជន
+    kind: str = "gmail"            # gmail | moonton | game | social | email | other
+    username: str = ""             # login name / game ID (ឧ. MLBB ID)
+    password: str = ""             # លេខសម្ងាត់គណនី (អ៊ិនគ្រីបក្នុង vault)
+    server: str = ""               # server / zone (ឧ. MLBB Zone ID)
+    url: str = ""                  # ទំព័រចូល ឬ app scheme
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -39,7 +46,15 @@ class Account:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Account":
         known = {k: v for k, v in data.items() if k in cls.__annotations__}
-        return cls(**known)
+        obj = cls(**known)
+        if obj.kind not in KINDS:
+            obj.kind = "other"
+        return obj
+
+    @property
+    def key(self) -> str:
+        """ឈ្មោះយោងសម្រាប់បង្ហាញ/វាយក្នុង CLI។"""
+        return self.email or self.username or self.label
 
 
 class Vault:
@@ -86,7 +101,7 @@ class Vault:
         if self._password is None:
             raise StoreError("vault មិនទាន់បើកទេ")
         payload = {
-            "schema": 1,
+            "schema": SCHEMA,
             "updated_at": time.time(),
             "accounts": [a.to_dict() for a in self.accounts],
         }
@@ -134,30 +149,80 @@ class Vault:
     def find(self, email: str) -> Account | None:
         email = email.strip().lower()
         for acc in self.accounts:
-            if acc.email.lower() == email:
+            if acc.email and acc.email.lower() == email:
+                return acc
+        return None
+
+    def resolve(self, key: str) -> Account | None:
+        """រកគណនីដោយ អ៊ីមែល → login name → label (ត្រូវតែមានតែមួយ)។"""
+        key = (key or "").strip()
+        if not key:
+            return None
+        low = key.lower()
+        hit = self.find(low)
+        if hit:
+            return hit
+        for acc in self.accounts:
+            if acc.username and acc.username.lower() == low:
+                return acc
+        by_label = [a for a in self.accounts if a.label and a.label.lower() == low]
+        if len(by_label) == 1:
+            return by_label[0]
+        return None
+
+    def _duplicate(self, account: Account) -> Account | None:
+        for acc in self.accounts:
+            if account.email and acc.email and acc.email.lower() == account.email.lower():
+                return acc
+            if (account.username and acc.username
+                    and acc.kind == account.kind
+                    and acc.username.lower() == account.username.lower()):
                 return acc
         return None
 
     def add(self, account: Account) -> Account:
-        if self.find(account.email):
-            raise StoreError(f"{account.email} មាននៅក្នុង vault រួចហើយ")
+        dup = self._duplicate(account)
+        if dup:
+            raise StoreError(f"{account.key} មាននៅក្នុង vault រួចហើយ")
         self.accounts.append(account)
         self.save()
         return account
 
-    def remove(self, email: str) -> bool:
-        acc = self.find(email)
+    def remove(self, key: str) -> bool:
+        acc = self.resolve(key)
         if not acc:
             return False
         self.accounts.remove(acc)
         self.save()
         return True
 
+    def drop(self, account: Account) -> bool:
+        """លុបតាម identity ត្រង់ៗ (មិនប្រើ key ដែលអាចច្រឡំ)។"""
+        if account in self.accounts:
+            self.accounts.remove(account)
+            self.save()
+            return True
+        return False
+
     def update(self, account: Account) -> None:
         for i, acc in enumerate(self.accounts):
-            if acc.email.lower() == account.email.lower():
+            same_email = acc.email and account.email and acc.email.lower() == account.email.lower()
+            same_user = (acc.username and account.username
+                         and acc.kind == account.kind
+                         and acc.username.lower() == account.username.lower())
+            if same_email or same_user:
                 account.updated_at = time.time()
                 self.accounts[i] = account
                 self.save()
                 return
-        raise StoreError(f"រកមិនឃើញ {account.email} ក្នុង vault")
+        raise StoreError(f"រកមិនឃើញ {account.key} ក្នុង vault")
+
+    def replace(self, old: Account, account: Account) -> None:
+        """ជំនួសគណនីដែលមានស្រាប់ (សម្រាប់ `teta edit`)។"""
+        acc = old if old in self.accounts else self.resolve(old.email or old.username)
+        if acc is None or acc not in self.accounts:
+            raise StoreError(f"រកមិនឃើញ {old.key} ក្នុង vault")
+        account.created_at = acc.created_at
+        account.updated_at = time.time()
+        self.accounts[self.accounts.index(acc)] = account
+        self.save()
